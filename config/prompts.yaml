@@ -1,0 +1,829 @@
+# Prompt templates for agents
+
+# VLM Chunk Creation
+vlm_chunk_creator:
+  system: |
+    You are a document structure analyzer. You analyze document pages and merge fragmented text blocks into coherent semantic chunks.
+
+  prompt: |
+    You are analyzing a document page. I have extracted text blocks from this page using OCR, but they are fragmented into small pieces.
+
+    **Extracted Text Blocks (with position coordinates):**
+    {blocks_text}
+
+    **Note:** Each block includes position coordinates [x, y, w, h] where:
+    - x, y: top-left corner position
+    - w, h: width and height
+    - Blocks with similar x values are vertically aligned (same column/indentation)
+    - Blocks with similar y values are horizontally aligned (same line)
+
+    **Your task:**
+    Look at the page image and the extracted text blocks with their positions. Merge these blocks into LARGE, meaningful semantic chunks.
+
+    **Document Structure Pattern (typical order):**
+    Most documents follow this sequence:
+    1. **Topic** (주제, 분야)
+    2. **Purpose/Objectives** (목적, 목표, 연구 질문)
+    3. **Background** (배경, 필요성, 선행 연구)
+    4. **Data** (데이터, 데이터셋, 수집 방법)
+    5. **Pipeline/Methodology** (방법론, 절차, 구조, 기법)
+    6. **Plan/Future Work** (향후 계획, 개선 방향, 한계점)
+
+    **IMPORTANT:**
+    - The current page image may contain ONLY ONE or a FEW of these sections, not all
+    - For example, this page might only show "Data" section, or only "Pipeline" section
+    - Do NOT assume all sections are present
+    - Focus on merging blocks within the sections that ARE present on this page
+
+    Use this typical flow to:
+    - Recognize section boundaries more accurately
+    - Merge blocks within the same section aggressively
+    - Split when transitioning between major sections (e.g., Background → Data, Data → Pipeline)
+
+    **Guidelines:**
+    - **Merge aggressively**: Combine blocks that are semantically related, even if they cover multiple sub-topics
+    - **Use visual cues and position data**: 
+      * Blocks with similar x positions (±20 pixels) have similar indentation → likely same hierarchical level
+      * Blocks with close y positions are nearby → merge if semantically related
+      * Blocks with smaller x values are less indented → potential headings or main content
+      * Blocks with larger x values are more indented → sub-points or details
+    - **Keep continuity**: If blocks form a logical flow or narrative, keep them together
+    - **Section awareness**: Consider the typical document structure pattern above, but remember this page may only show part of it
+    - **Section boundaries**: Only split when there's a clear topic shift matching the structure pattern (e.g., transitioning from Background to Data)
+    - **Connected content**: Merge content that references each other or builds on previous points
+    - **Target size**: Aim for larger chunks (200-500 words), not tiny fragments
+    - Fix obvious OCR errors or spacing issues
+    - Preserve the original meaning and order
+
+    **Examples of what to MERGE:**
+    - Introduction paragraph + its bullet points → ONE chunk
+    - Problem description + proposed solution → ONE chunk
+    - Multiple related steps in a process → ONE chunk
+    - Section with subsections at similar indent levels → ONE chunk
+    - Text blocks that visually appear as one paragraph → ONE chunk
+    - Content within the same structural section (e.g., all Data subsections together)
+
+    **Only split when:**
+    - Major heading indicating section transition (e.g., "데이터" → "방법론")
+    - Clear visual separator (horizontal line, large gap)
+    - Complete topic change matching the document structure pattern
+
+    **Output format (JSON array only):**
+    [
+      {{"text": "merged and cleaned text of chunk 1", "page": {page_num}}},
+      {{"text": "merged and cleaned text of chunk 2", "page": {page_num}}}
+    ]
+
+    CRITICAL INSTRUCTIONS - READ CAREFULLY:
+    1. Return ONLY the raw JSON array starting with [ and ending with ]
+    2. Do NOT add "Here is the result:" or any explanation
+    3. Do NOT use markdown code blocks - NO ```json and NO ```
+    4. Do NOT add any text before the [
+    5. Do NOT add any text after the ]
+    6. Your ENTIRE response must be valid JSON starting with [ 
+    
+    WRONG (DO NOT DO THIS):
+    ```json
+    [...]
+    ```
+    
+    CORRECT (DO THIS):
+    [...]
+
+# LLM Chunk Creator (Fallback when VLM unavailable)
+llm_chunk_creator:
+  system: |
+    You are a text processing expert. You merge fragmented text blocks into coherent chunks.
+
+  prompt: |
+    The following text blocks were extracted from a document page, but they are fragmented. Merge them into meaningful semantic chunks.
+
+    **Extracted Text Blocks:**
+    {blocks_text}
+
+    **Your task:**
+    Merge these blocks into coherent chunks (sections, paragraphs, or logical units).
+
+    **Guidelines:**
+    - Identify natural boundaries between different topics or sections
+    - Merge blocks that belong together semantically
+    - Fix obvious spacing or formatting issues
+    - Keep chunks reasonably sized (max 500 words per chunk)
+
+    **Output format (JSON array only):**
+    [
+      {{"text": "merged text of chunk 1", "page": {page_num}}},
+      {{"text": "merged text of chunk 2", "page": {page_num}}}
+    ]
+
+    CRITICAL INSTRUCTIONS - READ CAREFULLY:
+    1. Return ONLY the raw JSON array starting with [ and ending with ]
+    2. Do NOT add "Here is the result:" or any explanation
+    3. Do NOT use markdown code blocks - NO ```json and NO ```
+    4. Do NOT add any text before the [
+    5. Do NOT add any text after the ]
+    6. Your ENTIRE response must be valid JSON starting with [ 
+    
+    WRONG (DO NOT DO THIS):
+    ```json
+    [...]
+    ```
+    
+    CORRECT (DO THIS):
+    [...]
+
+# Chunk Classifier
+chunk_classifier:
+  system: |
+    You are a document section classifier. You classify text chunks into predefined categories based on their content and purpose.
+
+  prompt: |
+    Classify the following text chunk into ONE of these 6 categories:
+
+    **Categories:**
+    - **topic**: Topic or subject area of the research/project
+    - **purpose**: Research objectives, goals, aims, or main questions to answer
+    - **background**: Motivation, prior work, context, or why this research/project is needed
+    - **data**: Dataset description, data sources, data collection methods, data characteristics
+    - **pipeline**: Methodology, procedures, architecture, techniques, step-by-step processes, implementation details
+    - **plan**: Future work, improvements, next steps, limitations to address, roadmap
+
+    **Text Chunk (first 500 characters):**
+    {chunk_preview}
+
+    **Instructions:**
+    - Read the text carefully and understand its main purpose
+    - Consider the context and content type
+    - Choose the MOST appropriate category
+    - If the text covers multiple categories, choose the PRIMARY category
+
+    **Output:**
+    Answer with only the category name (lowercase, no explanation):
+    topic, purpose, background, data, pipeline, or plan
+
+chunk_classifier_batch:
+  system: |
+    You are a document section classifier. You classify multiple text chunks into predefined categories efficiently.
+
+  prompt: |
+    Classify the following text chunks into ONE of these 6 categories for each:
+
+    **Categories:**
+    - **topic**: Topic or subject area of the research/project
+    - **purpose**: Research objectives, goals, aims, or main questions to answer
+    - **background**: Motivation, prior work, context, or why this research/project is needed
+    - **data**: Dataset description, data sources, data collection methods, data characteristics
+    - **pipeline**: Methodology, procedures, architecture, techniques, step-by-step processes, implementation details
+    - **plan**: Future work, improvements, next steps, limitations to address, roadmap
+
+    **Text Chunks (JSON array):**
+    {chunks}
+
+    **Instructions:**
+    - For each chunk, read the text and determine its primary category
+    - Return a JSON array with the same structure: [{{"idx": 0, "category": "pipeline"}}, ...]
+    - Each object must have "idx" (matching input) and "category" (one of the 6 categories)
+
+    **Output (JSON array only, no markdown):**
+
+topic_fallback:
+  system: |
+    You are a project topic generator. Based on the following text, suggest the most appropriate project topic.
+  prompt: |
+    Based on the following text, suggest the most appropriate project topic in Korean.
+
+    **Text:**
+    {text_content}
+
+    **Instructions:**
+    - Read the text carefully and understand its main focus
+    - Suggest a concise project topic that captures the essence of the text
+    - The topic should be specific and relevant to the content
+
+    **Output:**
+    Provide only the project topic in Korean, no explanation.
+
+step_extractor:
+  system: |
+    You are a pipeline analysis expert. Extract DETAILED sequential steps from methodology descriptions.
+    Focus on EACH specific technique, algorithm, or tool mentioned.
+
+  prompt: |
+    Extract DETAILED sequential steps from this data processing and pipeline description:
+    
+    Data Section:
+    {data_content}
+    
+    Pipeline Section:
+    {pipeline_content}
+    
+    **CRITICAL INSTRUCTIONS:**
+    1. Extract EVERY distinct technique, tool, or algorithm mentioned
+    2. Create a SEPARATE step for each specific technique (e.g., if "PyMuPDF", "BeautifulSoup", "BERT" are mentioned, create 3 steps)
+    3. Break down general phrases into specific steps:
+       - "데이터 수집 및 전처리" → Step 1: "데이터 수집", Step 2: "전처리"
+       - "PyMuPDF → Structure Parsing → Step Abstraction" → 3 separate steps
+    4. Identify the purpose/function of each technique
+    5. Order them chronologically
+    6. Assign a descriptive category to each step (free-form, be specific to what it does)
+    
+    **Key Focus:**
+    - Look for specific technical terms (PyMuPDF, BERT, TF-IDF, etc.)
+    - Look for process names (크롤링, 파싱, 벡터화, etc.)
+    - Look for agent names or components (Structure Parser, Problem Analyzer, etc.)
+    - Each unique term should be its own step
+    
+    Field Descriptions:
+    - order: Sequential number (integer, starts from 1)
+    - category: Descriptive category (free-form string like "pdf_extraction", "text_parsing", "agent_structure", "model_training", etc.)
+    - action: SPECIFIC description of what this ONE technique/step does
+    - input: What this specific step receives
+    - output: What this specific step produces
+    - techniques: List of the specific method/tool used in THIS step (be specific: "PyMuPDF" not "PDF processing")
+    - dependencies: List of step_ids (format: STEP_001, STEP_002, etc.) that this step depends on
+    
+    **Category Examples (use what fits best):**
+    - pdf_extraction, text_extraction, data_collection
+    - text_parsing, structure_analysis, section_classification
+    - preprocessing, cleaning, normalization
+    - feature_engineering, vectorization, embedding
+    - agent_setup, agent_structure, agent_configuration
+    - model_training, fine_tuning, inference
+    - evaluation, scoring, feedback_generation
+    - planning, design, architecture
+    
+    **IMPORTANT - BE DETAILED**: 
+    - If you see "PyMuPDF → Structure Parsing → Step Abstraction", create 3 steps
+    - If you see "데이터 수집 및 전처리", create 2 steps
+    - If you see multiple agents or components, create one step per component
+    - Extract the ACTUAL steps from the document sections above
+    - Focus on EACH technical term mentioned
+    - Choose the most appropriate category for each step
+    
+    **Example of DETAILED extraction (for structure only - use actual document content):**
+    If document says: "PyMuPDF extracts text, then Structure Parser categorizes sections, then agents analyze problems"
+    
+    Create 3 steps:
+    [
+      {{
+        "order": 1,
+        "category": "pdf_extraction",
+        "action": "PDF 텍스트 추출",
+        "input": "PDF 파일",
+        "output": "추출된 텍스트 블록",
+        "techniques": ["PyMuPDF"],
+        "dependencies": []
+      }},
+      {{
+        "order": 2,
+        "category": "text_parsing",
+        "action": "문서 섹션 분류",
+        "input": "추출된 텍스트 블록",
+        "output": "분류된 섹션",
+        "techniques": ["Structure Parser"],
+        "dependencies": ["STEP_001"]
+      }},
+      {{
+        "order": 3,
+        "category": "problem_analysis",
+        "action": "문제 분석 및 식별",
+        "input": "분류된 섹션",
+        "output": "식별된 문제 목록",
+        "techniques": ["Problem Analyzer Agent"],
+        "dependencies": ["STEP_002"]
+      }}
+    ]
+    
+    **Now extract ALL DETAILED steps from the actual document above:**
+    Analyze every technical term, tool, and technique mentioned.
+    Return only valid JSON array, no explanation.
+
+problem_analyzer:
+  system: |
+    You are a technical problem analyst. Identify challenges, issues, and considerations when transforming input to output.
+
+  prompt: |
+    Analyze what technical problems, challenges, or considerations exist when transforming the INPUT to OUTPUT:
+    
+    Step Details:
+    - Action: {action}
+    - Input: {input}
+    - Output: {output}
+    
+    **Analysis Focus (IGNORE techniques field):**
+    Think about the INPUT → OUTPUT transformation:
+    1. What makes the INPUT insufficient or incompatible for the desired OUTPUT?
+    2. What obstacles, issues, or challenges must be overcome to produce the OUTPUT from this INPUT?
+    3. What would break, fail, or degrade if we tried to use INPUT directly without this transformation?
+    
+    **Examples to understand:**
+    - INPUT: "Raw PDF file" → OUTPUT: "Structured text blocks"
+      Problem: PDF contains mixed text, images, formatting; need to extract only meaningful text
+    
+    - INPUT: "Korean text" → OUTPUT: "Token IDs"
+      Problem: Computers process numbers, not text; need numerical representation
+    
+    - INPUT: "Multiple document sections" → OUTPUT: "5 classified categories"
+      Problem: Unorganized sections are hard to analyze; need structured organization
+    
+    Provide:
+    - description: Brief explanation of the problem/challenge in INPUT→OUTPUT transformation (1-2 sentences, in Korean)
+      * Focus on WHY the transformation is needed
+      * Focus on what makes INPUT inadequate for producing OUTPUT
+      * Example: "원시 PDF 파일에는 텍스트, 이미지, 서식이 혼재되어 있어 의미 있는 텍스트만 추출하여 구조화해야 함"
+    
+    - category: Choose the most appropriate one:
+      * data_quality: Input data has accuracy, completeness, consistency, or format issues
+        (e.g., unstructured data → structured data, noisy data → clean data)
+      * computational: Input format is inefficient for processing or requires optimization
+        (e.g., high-dimensional data → reduced dimensions, large dataset → compressed)
+      * model_performance: Input format doesn't match what the model/algorithm needs
+        (e.g., text → embeddings, unnormalized features → normalized features)
+      * integration: Input and output have compatibility or interface mismatches
+        (e.g., PDF → JSON, different data formats → unified format)
+    
+    - severity: Impact level if this transformation is NOT done:
+      * low: Minor inconvenience, workarounds exist, output still usable
+      * medium: Significant impact on downstream processing or quality
+      * high: Critical issue, next steps cannot function without this transformation
+    
+    - evidence: Short phrase describing the core transformation need
+      * Describe the gap between INPUT and OUTPUT
+      * Keep it short (5-10 words)
+      * Example: "PDF → 구조화된 텍스트 변환 필요"
+    
+    Output format (valid JSON object only):
+    {{
+      "description": "원시 PDF 파일에는 텍스트, 이미지, 서식이 혼재되어 있어 의미 있는 텍스트만 추출하여 구조화해야 함",
+      "category": "data_quality",
+      "severity": "high",
+      "evidence": "PDF → 구조화된 텍스트"
+    }}
+    
+    CRITICAL INSTRUCTIONS:
+    1. Return ONLY ONE JSON object (not an array)
+    2. Do NOT wrap in array brackets [ ]
+    3. Start with {{ and end with }}
+    4. Do NOT use markdown code blocks
+    
+    WRONG (DO NOT DO THIS):
+    [
+      {{"description": "...", "category": "..."}}
+    ]
+    
+    CORRECT (DO THIS):
+    {{"description": "...", "category": "..."}}
+    
+    Generate problem analysis as a SINGLE JSON object:
+
+# Input-Output based query generator (primary use)
+io_query_generator:
+  prompt: |
+    Generate search queries to find what challenges exist when transforming INPUT to OUTPUT:
+    
+    Input: {input}
+    Output: {output}
+    Context: {context}
+    
+    Generate 2-3 search queries in English that would find information about:
+    1. What problems or challenges exist when going from INPUT to OUTPUT
+    2. Why transformation from INPUT to OUTPUT is necessary
+    3. What issues or obstacles must be addressed in this transformation
+    
+    Guidelines:
+    - Focus on the INPUT → OUTPUT gap/transformation
+    - Include relevant technical terms from input/output
+    - Use problem-oriented keywords (challenge, issue, problem, limitation)
+    - Keep queries concise but descriptive
+    
+    Example for INPUT: "Raw text" → OUTPUT: "Word embeddings":
+    ["text to embedding challenges", "why convert text to embeddings", "text representation problem NLP"]
+    
+    Example for INPUT: "PDF document" → OUTPUT: "Structured sections":
+    ["PDF text extraction challenges", "document structure parsing problems", "why parse PDF into sections"]
+    
+    Example for INPUT: "Korean sentences" → OUTPUT: "Tokens":
+    ["Korean tokenization challenges", "text to tokens problem", "why tokenize Korean text"]
+    
+    Example for INPUT: "Unclassified chunks" → OUTPUT: "5 categories":
+    ["document classification challenges", "text categorization problem", "why classify document sections"]
+    
+    Output as JSON array of strings:
+    ["query 1", "query 2", "query 3"]
+    
+    Queries:
+
+# Technique-based query generator (kept for future use)
+search_query_generator:
+  prompt: |
+    Generate a search query to find what problem this technique solves:
+    
+    Technique: {technique}
+    Context: {context}
+    
+    Generate 2-3 search queries in English that would find information about:
+    1. What problem this technique solves
+    2. Why this technique is used in data/AI pipelines
+    3. What issue it addresses or what it prevents
+    
+    Guidelines:
+    - Use specific technical terms
+    - Include relevant field keywords (AI, deep learning, NLP, computer vision, data science)
+    - Focus on "why" and "problem" rather than "how"
+    - Keep queries concise but descriptive
+    
+    Example for "TF-IDF":
+    ["why use TF-IDF problem solves", "TF-IDF importance text analysis", "what problem does TF-IDF address"]
+    
+    Example for "Batch Normalization":
+    ["batch normalization deep learning solves what problem", "why use batch normalization neural networks", "batch normalization training issue"]
+    
+    Example for "Data Augmentation":
+    ["data augmentation AI solves what problem", "why data augmentation computer vision", "data augmentation prevents what issue"]
+    
+    Output as JSON array of strings:
+    ["query 1", "query 2", "query 3"]
+    
+    Queries:
+
+# Input-Output based result summarizer (primary use)
+io_result_summarizer:
+  prompt: |
+    Summarize what problem or challenge exists in the INPUT → OUTPUT transformation based on search results:
+    
+    Input: {input}
+    Output: {output}
+    
+    Search Results:
+    {search_results}
+    
+    Extract and synthesize information to answer:
+    1. What specific problem or limitation prevents directly using INPUT to get OUTPUT?
+    2. Why is the transformation from INPUT to OUTPUT necessary?
+    3. What would break or fail if we tried to skip this transformation?
+    
+    Requirements:
+    - Write 1-2 concise sentences in Korean
+    - Focus on the GAP or CHALLENGE between INPUT and OUTPUT, not implementation
+    - Use clear, technical language
+    - Mention the problem domain if relevant (e.g., PDF 처리, 텍스트 분석, 데이터 구조화)
+    
+    Example for INPUT: "PDF 파일" → OUTPUT: "텍스트 블록":
+    "PDF 파일에는 텍스트, 이미지, 서식 정보가 혼재되어 있어 의미 있는 텍스트만 추출하여 구조화된 형태로 변환해야 합니다."
+    
+    Example for INPUT: "원시 텍스트" → OUTPUT: "임베딩 벡터":
+    "원시 텍스트는 기계가 직접 처리할 수 없는 기호 형태이므로, 의미를 보존하면서 수치 벡터로 변환하여 모델이 이해할 수 있게 해야 합니다."
+    
+    Example for INPUT: "분류되지 않은 청크" → OUTPUT: "5개 카테고리":
+    "분류되지 않은 문서 청크들은 무작위로 흩어져 있어 체계적인 분석이 어려우므로, 의미에 따라 명확한 카테고리로 구조화해야 합니다."
+    
+    Summary:
+
+# Technique-based result summarizer (kept for future use)
+search_result_summarizer:
+  prompt: |
+    Based on the search results, summarize why this technique exists as a 'problem solver':
+    
+    Technique: {technique}
+    
+    Search Results:
+    {search_results}
+    
+    Synthesize the information to answer:
+    1. What specific technical constraint or bottleneck led to the development of this technique?
+    2. What 'problem-solving' role does this technique play within an AI/data pipeline?
+    3. What negative outcome or technical debt would occur if this technique were not utilized?
+    
+    Requirements:
+    - Write 1-2 concise sentences.
+    - **Focus**: Emphasize the 'WHY' (technical necessity). 
+    - Do NOT list the technique's weaknesses; describe the 'Domain Challenges' it resolves.
+    
+    Example (Batch Normalization):
+    "It addresses Internal Covariate Shift where input distributions change during training, allowing for higher learning rates and reduced sensitivity to weight initialization."
+    
+    Summary:
+
+# Evaluation Prompts
+evaluation:
+  # 주제 평가
+  topic_specificity:
+    system: "당신은 프로젝트 평가 전문가입니다. 프로젝트 주제의 구체성을 평가합니다."
+    prompt: |
+      다음 프로젝트의 주제와 목적 텍스트를 분석하고, 주제가 구체적으로 정의되었는지 평가하세요.
+      
+      [주제]
+      {topic_text}
+      
+      [목적]
+      {purpose_text}
+      
+      평가 기준:
+      1. 구체적인 목표가 명시되어 있는가?
+      2. 대상 문제/도메인이 명확한가?
+      3. 해결 방법의 개요가 제시되어 있는가?
+      
+      다음 JSON 형식으로 응답하세요:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1", "근거2"],
+        "reasoning": "평가 이유를 한 문장으로 설명"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  topic_relevance:
+    system: "당신은 프로젝트 평가 전문가입니다."
+    prompt: |
+      다음 프로젝트 주제, 목적과 배경을 분석하고, 선택한 분야가 프로젝트의 핵심 주제인지 평가하세요.
+      
+      [주제]
+      {topic_text}
+      
+      [목적]
+      {purpose_text}
+      
+      [배경]
+      {background_text}
+      
+      평가 기준:
+      - 주제와 사용 기술/방법론이 일치하는가?
+      - 부차적인 요소가 주제로 제시되지 않았는가? (예: 시계열 분석이 메인인데 '추천시스템'이 주제인 경우 부적절)
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1", "근거2"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  topic_novelty_keywords:
+    system: "당신은 연구 키워드 추출 전문가입니다."
+    prompt: |
+      다음 프로젝트 주제와 목적에서 핵심 키워드를 3-5개 추출하세요.
+      검색에 사용할 것이므로 영어로 변환하세요.
+      
+      [주제]
+      {topic_text}
+      
+      [목적]
+      {purpose_text}
+      
+      JSON 배열로 응답: ["keyword1", "keyword2", ...]
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  topic_novelty_query_generation:
+    system: "당신은 학술 검색 전문가입니다. 프로젝트 주제를 분석하여 관련 연구를 찾기 위한 최적의 검색 쿼리를 생성합니다."
+    prompt: |
+      다음 프로젝트의 주제와 목적을 분석하여, 유사한 연구를 찾기 위한 학술 검색 쿼리를 생성하세요.
+      
+      [주제]
+      {topic_text}
+      
+      [목적]
+      {purpose_text}
+      
+      [배경]
+      {background_text}
+      
+      **검색 쿼리 생성 가이드라인:**
+      1. 핵심 기술/방법론과 적용 분야를 포함
+      2. 너무 일반적이지 않게 (예: "AI project" ❌)
+      3. 영어로 작성 (학술 검색에 유리)
+      4. 2-3개의 쿼리를 생성하여 다양한 측면 커버
+      
+      **예시:**
+      - 주제: "BERT를 이용한 한국어 감성 분석"
+      - 쿼리: ["BERT Korean sentiment analysis", "transformer sentiment classification Korean"]
+      
+      JSON 배열로 응답:
+      ["query1", "query2", "query3"]
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  topic_novelty_similarity_analysis:
+    system: "당신은 연구 프로젝트 평가 전문가입니다. 검색된 기존 연구와 신규 프로젝트의 유사도를 분석합니다."
+    prompt: |
+      다음 프로젝트 주제와 검색된 기존 연구들을 비교하여, 각 연구의 유사도를 분석하세요.
+      
+      [신규 프로젝트 주제]
+      {topic_text}
+      
+      [목적]
+      {purpose_text}
+      
+      [검색된 연구 목록]
+      {search_results_json}
+      
+      **유사도 평가 기준:**
+      1. **연구 주제 유사도** (30%): 다루는 문제/도메인이 같은가?
+      2. **방법론 유사도** (40%): 사용하는 기술/알고리즘이 같은가?
+      3. **적용 분야 유사도** (30%): 적용 대상/목표가 같은가?
+      
+      **유사도 점수:**
+      - 0.9-1.0: 거의 동일한 연구
+      - 0.7-0.9: 매우 유사 (일부 차이)
+      - 0.5-0.7: 유사 (상당한 차이)
+      - 0.3-0.5: 부분적 유사 (다른 접근)
+      - 0.0-0.3: 거의 무관
+      
+      **최종 창의성 판단:**
+      - 유사도 0.7 이상인 연구가 3개 이상 → 창의성 낮음
+      - 유사도 0.5-0.7인 연구만 존재 → 창의성 보통
+      - 유사도 0.5 미만만 존재 → 창의성 높음
+      
+      JSON 형식으로 응답:
+      {{
+        "analysis": [
+          {{
+            "result_index": 0,
+            "title": "검색 결과 제목",
+            "similarity_score": 0.75,
+            "reasoning": "유사도 판단 근거 (주제, 방법론, 적용분야 각각 언급)"
+          }}
+        ],
+        "overall_novelty": {{
+          "result": true or false,
+          "confidence": 0.0-1.0,
+          "avg_similarity": 0.45,
+          "highly_similar_count": 1,
+          "reasoning": "전체 창의성 판단 근거"
+        }}
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  # 데이터 평가
+  data_availability:
+    system: "당신은 데이터 과학 프로젝트 평가 전문가입니다."
+    prompt: |
+      다음 데이터 섹션을 분석하고, 데이터가 확보되었거나 확보 계획이 구체적인지 평가하세요.
+      
+      [데이터 섹션]
+      {data_text}
+      
+      평가 기준:
+      - 데이터셋 이름/출처가 명시되어 있는가?
+      - 데이터 수집 방법이 구체적인가?
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  data_usage:
+    system: "당신은 데이터 과학 프로젝트 평가 전문가입니다."
+    prompt: |
+      다음 데이터 및 파이프라인 섹션을 분석하고, 데이터 활용 방법이 구체적인지 평가하세요.
+      
+      [데이터]
+      {data_text}
+      
+      [파이프라인]
+      {pipeline_text}
+      
+      평가 기준:
+      - 데이터의 입력/출력 형태가 명시되어 있는가?
+      - 어떤 단계에서 어떻게 사용되는지 명확한가?
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  data_preprocessing:
+    system: "당신은 데이터 과학 프로젝트 평가 전문가입니다."
+    prompt: |
+      다음 데이터 및 파이프라인 섹션을 분석하고, 전처리 방법이 제시되었는지 평가하세요.
+      
+      [데이터]
+      {data_text}
+      
+      [파이프라인]
+      {pipeline_text}
+      
+      평가 기준:
+      - 구체적인 전처리 기법이 명시되어 있는가? (정규화, 토큰화, 인코딩 등)
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  # 알고리즘 평가
+  algorithm_specificity:
+    system: "당신은 알고리즘 설계 평가 전문가입니다."
+    prompt: |
+      다음 단계별 프레임워크를 분석하세요.
+      
+      [단계 목록]
+      {steps_json}
+      
+      평가 기준:
+      1. 단계가 3개 이상인가?
+      2. 각 단계의 입력/출력이 명시되어 있는가?
+      3. 단계 간 연결이 논리적인가?
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1", "근거2"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  algorithm_relevance:
+    system: "당신은 알고리즘 설계 평가 전문가입니다."
+    prompt: |
+      프레임워크의 최종 출력이 프로젝트 주제와 목적에 부합하는지 평가하세요.
+      
+      [프로젝트 주제]
+      {topic_text}
+      
+      [프로젝트 목적]
+      {purpose_text}
+      
+      [단계 목록]
+      {steps_json}
+      
+      평가 기준:
+      - 마지막 단계의 출력이 프로젝트 목적과 일치하는가?
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  # 문제 해결력 평가
+  problem_purposefulness:
+    system: "당신은 문제 해결 분석 전문가입니다."
+    prompt: |
+      각 단계에서 해당 기술을 사용한 이유가 명시되었는지 평가하세요.
+      
+      [문제 매핑]
+      {problem_mapping_summary}
+      
+      평가 기준:
+      - 각 단계(step)에 대응하는 문제(problem)가 명확히 정의되어 있는가?
+      - 문제 해결의 의도가 명시되어 있는가?
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+
+  # 계획 평가
+  plan_specificity:
+    system: "당신은 프로젝트 계획 평가 전문가입니다."
+    prompt: |
+      다음 계획 섹션을 분석하고, 날짜와 함께 구체적인 계획이 작성되었는지 평가하세요.
+      
+      [계획]
+      {plan_text}
+      
+      평가 기준:
+      - 날짜/기간이 명시되어 있는가?
+      - 각 기간별 구체적인 작업 항목이 있는가?
+      
+      JSON 형식으로 응답:
+      {{
+        "result": true or false,
+        "confidence": 0.0-1.0,
+        "evidence": ["근거1"],
+        "reasoning": "평가 이유"
+      }}
+      
+      CRITICAL: Do NOT use markdown code blocks - NO ```json and NO ```. Return raw JSON only.
+

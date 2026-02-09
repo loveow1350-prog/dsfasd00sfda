@@ -1,0 +1,77 @@
+llm:
+  provider: "google"  # Primary provider for big model
+  model: "gemini-pro"  # Default/big model (backward compatibility)
+
+  # Dual-model strategy: Use small model for simple tasks, big model for complex tasks
+  enable_dual_model: true
+
+  # Small model configuration (Ollama)
+  small_model_provider: "google"  # Can be different from main provider
+  small_model: "gemma-3-4b-it"  # For simple tasks: query generation, classification
+
+  # Big model configuration (Google Gemini)
+  big_model_provider: "google"  # Can be different from main provider
+  big_model: "gemma-3-27b-it"  # For complex tasks: problem analysis, structure parsing, VLM
+
+  # Evaluation model configuration (for evaluation tasks)
+  eval_model_provider: "google"  # Provider for evaluation
+  eval_model: "gemini-2.5-flash-lite"  # Model for evaluation (can be different from big_model)
+
+  # Model examples by provider:
+  # - openai: "gpt-4-turbo-preview", "gpt-3.5-turbo"
+  # - anthropic: "claude-3-opus-20240229", "claude-3-sonnet-20240229"
+  # - google: "gemini-pro", "gemini-1.5-pro"
+  # - ollama: "llama2", "mistral", "mixtral", "llava", "gemma2:2b" (requires local Ollama installation)
+  # - huggingface: "meta-llama/Llama-2-7b-chat-hf", "mistralai/Mistral-7B-Instruct-v0.2"
+  temperature: 0.7
+  max_tokens: 8192  # Increased to prevent JSON truncation
+  base_url: "http://localhost:11434"  # Only for ollama provider (fallback)
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  cache_ttl_days: 7
+
+search:
+  primary_api: "tavily"  # tavily or duckduckgo
+  fallback_api: "duckduckgo"
+  timeout: 10
+  max_results: 3  # For PDF analysis/problem discovery
+  eval_max_results: 10  # For evaluation novelty analysis (more results needed)
+
+processing:
+  max_retries: 3
+  retry_delay: 2
+  pdf_quality_threshold: 0.6
+
+headers:
+  purpose:
+    keywords: ["분석 목적", "연구 목적", "목표", "Objective", "Purpose"]
+    aliases: ["연구의 목적", "본 연구의 목적"]
+  background:
+    keywords: ["분석 배경", "연구 배경", "배경", "Background", "Motivation"]
+    aliases: ["연구의 배경", "연구 동기"]
+  data:
+    keywords: ["사용 데이터", "데이터", "데이터셋", "Data", "Dataset"]
+    aliases: ["데이터 구성", "실험 데이터"]
+  pipeline:
+    keywords: ["전체적 파이프라인", "파이프라인", "방법론", "Pipeline", "Methodology"]
+    aliases: ["연구 방법", "실험 절차", "모델 구조"]
+  plan:
+    keywords: ["향후 계획", "계획", "Future Work", "Plan"]
+    aliases: ["추후 연구", "개선 방향"]
+
+step_categories:
+  - data_collection
+  - preprocessing
+  - feature_engineering
+  - modeling
+  - evaluation
+  - post_processing
+
+problem_categories:
+  - data_quality
+  - computational
+  - model_performance
+  - integration
